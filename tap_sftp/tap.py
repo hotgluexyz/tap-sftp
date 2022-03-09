@@ -9,7 +9,7 @@ from tap_sftp.discover import discover_streams
 from tap_sftp.stats import STATS
 from tap_sftp.sync import sync_stream
 
-REQUIRED_CONFIG_KEYS = ["username", "port", "host", "tables", "start_date"]
+REQUIRED_CONFIG_KEYS = ["username", "host", "tables", "start_date"]
 REQUIRED_DECRYPT_CONFIG_KEYS = ['SSM_key_name', 'gnupghome', 'passphrase']
 REQUIRED_TABLE_SPEC_CONFIG_KEYS = ["table_name", "search_prefix", "search_pattern"]
 
@@ -78,6 +78,9 @@ def do_sync(config, catalog, state):
 @singer.utils.handle_top_exception(LOGGER)
 def main():
     args = utils.parse_args(REQUIRED_CONFIG_KEYS)
+
+    if not args.config.get("port"):
+        args.config["port"] = 22
     # validate tables config
     for table in args.config.get('tables'):
         utils.check_config(table, REQUIRED_TABLE_SPEC_CONFIG_KEYS)
