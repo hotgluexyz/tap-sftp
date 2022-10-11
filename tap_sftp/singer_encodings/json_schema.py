@@ -105,7 +105,7 @@ def infer(datum):
     if datum is None or datum == '':
         return None
 
-    if not (isinstance(datum, str) and datum[0]=="0"):
+    if not (isinstance(datum, str) and len(datum)>1 and datum[0]=="0"):
         try:
             int(datum)
             return 'integer'
