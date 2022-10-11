@@ -105,18 +105,19 @@ def infer(datum):
     if datum is None or datum == '':
         return None
 
-    try:
-        int(datum)
-        return 'integer'
-    except (ValueError, TypeError):
-        pass
+    if not (isinstance(datum, str) and len(datum)>1 and datum[0]=="0"):
+        try:
+            int(datum)
+            return 'integer'
+        except (ValueError, TypeError):
+            pass
 
-    try:
-        # numbers are NOT floats, they are DECIMALS
-        float(datum)
-        return 'number'
-    except (ValueError, TypeError):
-        pass
+        try:
+            # numbers are NOT floats, they are DECIMALS
+            float(datum)
+            return 'number'
+        except (ValueError, TypeError):
+            pass
 
     return 'string'
 
