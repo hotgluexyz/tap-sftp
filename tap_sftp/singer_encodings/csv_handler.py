@@ -33,7 +33,7 @@ def get_row_iterator(iterable, options=None):
     
     iterable.seek(0)
     reader = csv.DictReader(
-        io.TextIOWrapper(iterable, encoding=options.get("encoding", detector.result.get('encoding'))),
+        io.TextIOWrapper(iterable, encoding=(options.get("encoding") or detector.result.get('encoding'))),
         fieldnames=None,
         restkey=SDC_EXTRA_COLUMN,
         delimiter=options.get('delimiter', ',')
