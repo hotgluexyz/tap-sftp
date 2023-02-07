@@ -159,16 +159,17 @@ def pick_datatype(type_count):
     if type_count.get('date-time', 0) > 0:
         return 'date-time'
 
-    if len(type_count) == 1:
-        if type_count.get('integer', 0) > 0:
-            to_return = 'integer'
-        elif type_count.get('number', 0) > 0:
-            to_return = 'number'
+    # default as string to avoid deleting 0 in front of number
+    # if len(type_count) == 1:
+    #     if type_count.get('integer', 0) > 0:
+    #         to_return = 'integer'
+    #     elif type_count.get('number', 0) > 0:
+    #         to_return = 'number'
 
-    elif(len(type_count) == 2 and
-         type_count.get('integer', 0) > 0 and
-         type_count.get('number', 0) > 0):
-        to_return = 'number'
+    # elif(len(type_count) == 2 and
+    #      type_count.get('integer', 0) > 0 and
+    #      type_count.get('number', 0) > 0):
+    #     to_return = 'number'
 
     return to_return
 
