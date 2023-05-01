@@ -5,7 +5,7 @@ import stat
 import tempfile
 import time
 from datetime import datetime
-
+from io import StringIO
 import backoff
 import paramiko
 import pytz
@@ -25,7 +25,7 @@ def handle_backoff(details):
 
 
 class SFTPConnection():
-    def __init__(self, host, username, password=None, private_key_file=None, port=None):
+    def __init__(self, host, username, password=None, private_key_file=None, private_key= None, port=None):
         self.host = host
         self.username = username
         self.password = password
@@ -38,6 +38,9 @@ class SFTPConnection():
         if private_key_file:
             key_path = os.path.expanduser(private_key_file)
             self.key = paramiko.RSAKey.from_private_key_file(key_path)
+        elif private_key:
+            key_string = StringIO(private_key)
+            self.key = paramiko.RSAKey.from_private_key(key_string)
 
     # If connection is snapped during connect flow, retry up to a
     # minute for SSH connection to succeed. 2^6 + 2^5 + ...
@@ -190,4 +193,5 @@ def connection(config):
                           config['username'],
                           password=config.get('password'),
                           private_key_file=config.get('private_key_file'),
+                          private_key=config.get('private_key'),
                           port=config.get('port'))
