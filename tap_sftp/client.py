@@ -111,6 +111,11 @@ class SFTPConnection():
             result = self.sftp.listdir_attr(prefix)
         except FileNotFoundError as e:
             raise Exception("Directory '{}' does not exist".format(prefix)) from e
+        except OSError as e:
+            LOGGER.info("Socket closed. Retrying")
+            self.__connect()
+            result = self.sftp.listdir_attr(prefix)
+
 
         for file_attr in result:
             # NB: This only looks at the immediate level beneath the prefix directory
