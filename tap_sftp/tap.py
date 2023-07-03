@@ -86,7 +86,13 @@ def main():
     if decrypt_configs:
         # validate decryption configs
         utils.check_config(decrypt_configs, REQUIRED_DECRYPT_CONFIG_KEYS)
-
+    
+    private_key = args.config.get("private_key")
+    private_key_file = args.config.get("private_key_file")
+    password = args.config.get("password")
+    if not (password or private_key or private_key_file):
+        raise Exception("Config is missing a password or private key")
+    
     if args.discover:
         do_discover(args.config)
     elif args.catalog or args.properties:
