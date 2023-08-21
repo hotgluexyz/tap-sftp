@@ -80,6 +80,8 @@ def main():
     args = utils.parse_args(REQUIRED_CONFIG_KEYS)
     # validate tables config
     for table in args.config.get('tables'):
+        if table.get("table_name"):
+            table["table_name"] = table["table_name"].replace("/", "_")
         utils.check_config(table, REQUIRED_TABLE_SPEC_CONFIG_KEYS)
 
     decrypt_configs = args.config.get('decryption_configs')
