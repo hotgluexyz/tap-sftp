@@ -1,6 +1,6 @@
 import singer
 from singer import Transformer, metadata, utils
-
+from singer_write import write_record
 from tap_sftp import client, stats
 from tap_sftp.aws_ssm import AWS_SSM
 from tap_sftp.singer_encodings import csv_handler
@@ -67,7 +67,7 @@ def sync_file(sftp_file_spec, stream, table_spec, config):
     decryption_configs = config.get('decryption_configs')
     if decryption_configs:
         decryption_configs['key'] = AWS_SSM.get_decryption_key(decryption_configs.get('SSM_key_name'))
-        
+
     with sftp_client.get_file_handle(sftp_file_spec, decryption_configs) as file_handle:
         if decryption_configs:
             sftp_file_spec['filepath'] = file_handle.name
@@ -96,7 +96,7 @@ def sync_file(sftp_file_spec, stream, table_spec, config):
 
                     to_write = transformer.transform(rec, stream.schema.to_dict(), metadata.to_map(stream.metadata))
 
-                    singer.write_record(stream.tap_stream_id, to_write)
+                    write_record(stream.tap_stream_id, to_write)
                     records_synced += 1
                     if records_synced % 100000 == 0:
                         LOGGER.info(f'Synced Record Count: {records_synced}')
