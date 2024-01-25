@@ -33,7 +33,7 @@ def sync_stream(config, state, stream):
         LOGGER.info("No table configuration found for '%s', skipping stream", table_name)
         return 0
     if len(table_spec) > 1:
-        LOGGER.info("Multiple table configurations found for '%s', skipping stream", table_name)
+        LOGGER.info("You can only have one file path per table name. Multiple table configurations found for '%s', skipping stream.", table_name)
         return 0
     table_spec = table_spec[0]
 
