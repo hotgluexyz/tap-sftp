@@ -13,6 +13,23 @@ import singer
 from paramiko.ssh_exception import AuthenticationException, SSHException
 
 from tap_sftp import decrypt
+from paramiko.sftp_file import SFTPFile
+
+from paramiko.sftp_attr import SFTPAttributes
+from paramiko.sftp import (
+    CMD_HANDLE,
+    SFTPError,
+    SFTP_FLAG_READ,
+    SFTP_FLAG_WRITE,
+    SFTP_FLAG_CREATE,
+    SFTP_FLAG_TRUNC,
+    SFTP_FLAG_APPEND,
+    SFTP_FLAG_EXCL,
+    CMD_OPEN,
+)
+from paramiko.common import DEBUG
+from paramiko.py3compat import u
+from binascii import hexlify
 
 LOGGER = singer.get_logger()
 
@@ -23,9 +40,41 @@ def handle_backoff(details):
         "SSH Connection closed unexpectedly. Waiting {wait} seconds and retrying...".format(**details)
     )
 
+class MySFTPClient(paramiko.SFTPClient):
+
+    def open(self, filename, mode="r", bufsize=-1):
+        
+        filename = self._adjust_cwd(filename)
+        self._log(DEBUG, "open({!r}, {!r})".format(filename, mode))
+        imode = 0
+        if ("r" in mode) or ("+" in mode):
+            imode |= SFTP_FLAG_READ
+        if ("w" in mode) or ("+" in mode) or ("a" in mode):
+            imode |= SFTP_FLAG_WRITE
+        if "w" in mode:
+            imode |= SFTP_FLAG_CREATE | SFTP_FLAG_TRUNC
+        if "a" in mode:
+            imode |= SFTP_FLAG_CREATE | SFTP_FLAG_APPEND
+        if "x" in mode:
+            imode |= SFTP_FLAG_CREATE | SFTP_FLAG_EXCL
+        attrblock = SFTPAttributes()
+        t, msg = self._request(CMD_OPEN, filename, imode, attrblock)
+        if t != CMD_HANDLE:
+            raise SFTPError("Expected handle")
+        handle = msg.get_binary()
+        self._log(
+            DEBUG,
+            "open({!r}, {!r}) -> {}".format(
+                filename, mode, u(hexlify(handle))
+            ),
+        )
+        sftp_client = SFTPFile(self, handle, mode, bufsize)
+        #TODO make this configurable
+        sftp_client.MAX_REQUEST_SIZE = 3276
+        return sftp_client
 
 class SFTPConnection():
-    def __init__(self, host, username, password=None, private_key_file=None, private_key= None, port=None):
+    def __init__(self, host, username, password=None, private_key_file=None, private_key= None, port=None,max_request_size=None):
         self.host = host
         self.username = username
         self.password = password
@@ -35,6 +84,8 @@ class SFTPConnection():
         self.transport = None
         self.retries = 10
         self.__sftp = None
+        #TODO make it useable in MySFTPClient class
+        self.max_request_size = max_request_size
         if private_key_file:
             key_path = os.path.expanduser(private_key_file)
             self.key = paramiko.RSAKey.from_private_key_file(key_path)
@@ -58,7 +109,7 @@ class SFTPConnection():
                 self.transport = paramiko.Transport((self.host, self.port))
                 self.transport.use_compression(True)
                 self.transport.connect(username=self.username, password=self.password, hostkey=None, pkey=self.key)
-                self.__sftp = paramiko.SFTPClient.from_transport(self.transport)
+                self.__sftp = MySFTPClient.from_transport(self.transport)
                 LOGGER.info('Connection successful')
                 break
             except (AuthenticationException, SSHException) as ex:
@@ -69,7 +120,7 @@ class SFTPConnection():
                 time.sleep(5*i)
                 LOGGER.info('Connection failed, retrying...')
                 if i >= (self.retries):
-                    raise ex
+                    raise ex            
 
     @property
     def sftp(self):
@@ -199,4 +250,5 @@ def connection(config):
                           password=config.get('password'),
                           private_key_file=config.get('private_key_file'),
                           private_key=config.get('private_key'),
-                          port=config.get('port'))
+                          port=config.get('port'),
+                          max_request_size = int(config.get('max_request_size',32768)))
