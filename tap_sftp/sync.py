@@ -63,7 +63,7 @@ def sync_stream(config, state, stream):
 
 @backoff.on_exception(
         backoff.expo,
-        (OSError),
+        (IOError,OSError),
         max_tries=3,
         jitter=None,
         factor=2)
@@ -73,44 +73,40 @@ def sync_file(sftp_file_spec, stream, table_spec, config):
     decryption_configs = config.get('decryption_configs')
     if decryption_configs:
         decryption_configs['key'] = AWS_SSM.get_decryption_key(decryption_configs.get('SSM_key_name'))
-    try:
-        # Attempt to re-read from the file incase of IO or OS error
-        with sftp_client.get_file_handle(sftp_file_spec, decryption_configs) as file_handle:
-            if decryption_configs:
-                sftp_file_spec['filepath'] = file_handle.name
+    # Attempt to re-read from the file incase of IO or OS error
+    with sftp_client.get_file_handle(sftp_file_spec, decryption_configs) as file_handle:
+        if decryption_configs:
+            sftp_file_spec['filepath'] = file_handle.name
 
-            # Add file_name to opts and flag infer_compression to support gzipped files
-            opts = {'key_properties': table_spec.get('key_properties', []),
-                    'delimiter': table_spec.get('delimiter', ','),
-                    'file_name': sftp_file_spec['filepath'],
-                    'encoding': table_spec.get('encoding', config.get('encoding'))}
+        # Add file_name to opts and flag infer_compression to support gzipped files
+        opts = {'key_properties': table_spec.get('key_properties', []),
+                'delimiter': table_spec.get('delimiter', ','),
+                'file_name': sftp_file_spec['filepath'],
+                'encoding': table_spec.get('encoding', config.get('encoding'))}
 
-            readers = csv_handler.get_row_iterators(file_handle, options=opts, infer_compression=True)
+        readers = csv_handler.get_row_iterators(file_handle, options=opts, infer_compression=True)
 
-            records_synced = 0
+        records_synced = 0
 
-            for reader in readers:
-                LOGGER.info('Synced Record Count: 0')
-                with Transformer() as transformer:
-                    for row in reader:
-                        custom_columns = {
-                            '_sdc_source_file': sftp_file_spec["filepath"],
+        for reader in readers:
+            LOGGER.info('Synced Record Count: 0')
+            with Transformer() as transformer:
+                for row in reader:
+                    custom_columns = {
+                        '_sdc_source_file': sftp_file_spec["filepath"],
 
-                            # index zero, +1 for header row
-                            '_sdc_source_lineno': records_synced + 2
-                        }
-                        rec = {**row, **custom_columns}
+                        # index zero, +1 for header row
+                        '_sdc_source_lineno': records_synced + 2
+                    }
+                    rec = {**row, **custom_columns}
 
-                        to_write = transformer.transform(rec, stream.schema.to_dict(), metadata.to_map(stream.metadata))
+                    to_write = transformer.transform(rec, stream.schema.to_dict(), metadata.to_map(stream.metadata))
 
-                        write_record(stream.tap_stream_id, to_write)
-                        records_synced += 1
-                        if records_synced % 100000 == 0:
-                            LOGGER.info(f'Synced Record Count: {records_synced}')
-                LOGGER.info(f'Sync Complete - Records Synced: {records_synced}')
-    except (IOError,OSError) as e:
-        LOGGER.error(f"Backing off due to IOError syncing file {file_handle.name}: {e}. ")
-        raise OSError(e)
+                    write_record(stream.tap_stream_id, to_write)
+                    records_synced += 1
+                    if records_synced % 100000 == 0:
+                        LOGGER.info(f'Synced Record Count: {records_synced}')
+            LOGGER.info(f'Sync Complete - Records Synced: {records_synced}')
 
     stats.add_file_data(table_spec, sftp_file_spec['filepath'], sftp_file_spec['last_modified'], records_synced)
 
