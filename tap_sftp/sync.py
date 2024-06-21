@@ -65,7 +65,7 @@ def sync_stream(config, state, stream):
         backoff.expo,
         (IOError,OSError),
         max_tries=3,
-        jitter=None,
+        jitter=backoff.random_jitter,
         factor=2)
 def sync_file(sftp_file_spec, stream, table_spec, config):
     LOGGER.info('Syncing file "%s".', sftp_file_spec["filepath"])
