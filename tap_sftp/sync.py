@@ -6,7 +6,7 @@ from tap_sftp.aws_ssm import AWS_SSM
 from tap_sftp.singer_encodings import csv_handler
 
 from concurrent.futures import ThreadPoolExecutor, as_completed
-
+import backoff
 
 LOGGER = singer.get_logger()
 
@@ -61,13 +61,19 @@ def sync_stream(config, state, stream):
     return records_streamed
 
 
+@backoff.on_exception(
+        backoff.expo,
+        (IOError,OSError),
+        max_tries=3,
+        jitter=None,
+        factor=2)
 def sync_file(sftp_file_spec, stream, table_spec, config):
     LOGGER.info('Syncing file "%s".', sftp_file_spec["filepath"])
     sftp_client = client.connection(config)
     decryption_configs = config.get('decryption_configs')
     if decryption_configs:
         decryption_configs['key'] = AWS_SSM.get_decryption_key(decryption_configs.get('SSM_key_name'))
-
+    # Attempt to re-read from the file incase of IO or OS error
     with sftp_client.get_file_handle(sftp_file_spec, decryption_configs) as file_handle:
         if decryption_configs:
             sftp_file_spec['filepath'] = file_handle.name
