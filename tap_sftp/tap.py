@@ -34,7 +34,7 @@ def do_sync(config, catalog, state):
     LOGGER.info('Starting sync.')
 
     for stream in catalog.streams:
-        stream_name = stream.tap_stream_id
+        stream_name = stream.stream
         mdata = metadata.to_map(stream.metadata)
 
         if not stream_is_selected(mdata):
