@@ -19,18 +19,20 @@ def sync_ftp(sftp_file, stream, table_spec, config, state, table_name):
 
 
 def sync_stream(config, state, stream):
-    table_name = stream.tap_stream_id
-    modified_since = utils.strptime_to_utc(singer.get_bookmark(state, table_name, 'modified_since') or
+    table_visible_name = stream.stream
+    table_original_name = stream.tap_stream_id
+    
+    modified_since = utils.strptime_to_utc(singer.get_bookmark(state, table_visible_name, 'modified_since') or
                                            config['start_date'])
     search_subdir = config.get("search_subdirectories", True)
 
-    LOGGER.info('Syncing table "%s".', table_name)
+    LOGGER.info('Syncing table "%s".', table_visible_name)
     LOGGER.info('Getting files modified since %s.', modified_since)
 
     sftp_client = client.connection(config)
-    table_spec = [table_config for table_config in config["tables"] if table_config["table_name"] == table_name]
+    table_spec = [table_config for table_config in config["tables"] if table_config["table_name"] == table_original_name]
     if len(table_spec) == 0:
-        LOGGER.info("No table configuration found for '%s', skipping stream", table_name)
+        LOGGER.info("No table configuration found for '%s', skipping stream", table_visible_name)
         return 0
     if len(table_spec) > 1:
         LOGGER.info("You can only have one file path per table name. Multiple table configurations found for '%s', skipping stream.", table_name)
@@ -52,11 +54,11 @@ def sync_stream(config, state, stream):
         return records_streamed
 
     with ThreadPoolExecutor(max_workers=8) as executor:
-        future_sftp = {executor.submit(sync_ftp, sftp_file, stream, table_spec, config, state, table_name): sftp_file for sftp_file in files}
+        future_sftp = {executor.submit(sync_ftp, sftp_file, stream, table_spec, config, state, table_visible_name): sftp_file for sftp_file in files}
         for future in as_completed(future_sftp):
             records_streamed += future.result()
 
-    LOGGER.info('Wrote %s records for table "%s".', records_streamed, table_name)
+    LOGGER.info('Wrote %s records for table "%s".', records_streamed, table_visible_name)
 
     return records_streamed
 
@@ -102,7 +104,7 @@ def sync_file(sftp_file_spec, stream, table_spec, config):
 
                     to_write = transformer.transform(rec, stream.schema.to_dict(), metadata.to_map(stream.metadata))
 
-                    write_record(stream.tap_stream_id, to_write)
+                    write_record(stream.stream, to_write)
                     records_synced += 1
                     if records_synced % 100000 == 0:
                         LOGGER.info(f'Synced Record Count: {records_synced}')
