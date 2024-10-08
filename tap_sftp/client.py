@@ -15,6 +15,7 @@ from paramiko.ssh_exception import AuthenticationException, SSHException
 from tap_sftp import decrypt
 
 LOGGER = singer.get_logger()
+MAX_TRIES = 6
 
 logging.getLogger("paramiko").setLevel(logging.CRITICAL)
 
@@ -47,7 +48,7 @@ class SFTPConnection():
     @backoff.on_exception(
         backoff.expo,
         (EOFError, ConnectionResetError),
-        max_tries=6,
+        max_tries=MAX_TRIES,
         on_backoff=handle_backoff,
         jitter=None,
         factor=2)
@@ -62,13 +63,10 @@ class SFTPConnection():
                 LOGGER.info('Connection successful')
                 break
             except (AuthenticationException, SSHException, ConnectionResetError) as ex:
-                if self.__sftp:
-                    self.__sftp.close()
-                if self.transport:
-                    self.transport.close()
-                LOGGER.info(f'Connection failed, sleeping for {5*i} secconds...')
+                self.close()
+                LOGGER.info(f'Connection failed, retrying after {5*i} seconds...')
                 time.sleep(5*i)
-                LOGGER.info("Retrying to establish a connection...")
+                LOGGER.info('Retrying now')
                 if i >= (self.retries):
                     raise ex
 
@@ -83,8 +81,10 @@ class SFTPConnection():
         self.__sftp = sftp
 
     def close(self):
-        self.__sftp.close()
-        self.transport.close()
+        if self.__sftp:
+            self.__sftp.close()
+        if self.transport:
+            self.transport.close()
 
     def match_files_for_table(self, files, table_name, search_pattern):
         LOGGER.info("Searching for files for table '%s', matching pattern: %s", table_name, search_pattern)
@@ -160,7 +160,52 @@ class SFTPConnection():
             matching_files = [f for f in matching_files if f["last_modified"] > modified_since]
 
         return matching_files
+    
+    def download_file_in_chunks(self, remote_file, local_file, chunk_size=1024 * 1024, counting = 1):  # 1 MB chunks by default
+        """Download a file in chunks from the SFTP server and merge it locally."""
+        try:
+            logging.info("Downloading the file by chunks")
+            # Get the total size of the remote file
+            remote_size = self.sftp.stat(remote_file).st_size
+            logging.info(f"Remote file size: {remote_size}")            
+            # Open the remote file
+            with self.sftp.file(remote_file, 'r') as remote_f:
+                # If local file exists, start from where it left off
+                local_size = 0
+                if os.path.exists(local_file):
+                    local_size = os.path.getsize(local_file)
+                logging.info(f"Local file size: {local_size}")
 
+                # Resume download or start fresh
+                remote_f.seek(local_size)
+                
+                # Open local file in append mode
+                with open(local_file, 'ab') as local_f:
+                    while local_size < remote_size:
+                        # Read a chunk from the remote file
+                        chunk = remote_f.read(min(chunk_size, remote_size - local_size))
+                        if not chunk:
+                            break
+                        # Write the chunk to the local file
+                        local_f.write(chunk)
+                        local_size += len(chunk)
+                        logging.info(f"Downloaded {local_size} of {remote_size} bytes - Progress: {local_size/remote_size*100}%")
+
+        except Exception as e:
+            if counting > MAX_TRIES:
+                logging.error(f"Error downloading {remote_file} by chunks: {str(e)}")
+                raise Exception(e)
+            self.close()
+            self.__connect()
+            self.download_file_in_chunks(remote_file,local_file,counting=counting+1)
+
+    @backoff.on_exception(
+        backoff.expo,
+        (SSHException),
+        max_tries=MAX_TRIES,
+        on_backoff=handle_backoff,
+        jitter=None,
+        factor=2)
     def get_file_handle(self, f, decryption_configs=None):
         """ Takes a file dict {"filepath": "...", "last_modified": "..."} and returns a handle to the file. """
         with tempfile.TemporaryDirectory() as tmpdirname:
@@ -183,7 +228,11 @@ class SFTPConnection():
                 except FileNotFoundError:
                     raise Exception(f'Decryption of file failed: {sftp_file_path}')
             else:
-                self.sftp.get(sftp_file_path, local_path)
+                LOGGER.info(f'Getting the file from {sftp_file_path} to {local_path}...')
+                try:
+                    self.sftp.get(sftp_file_path, local_path)
+                except:
+                    self.download_file_in_chunks(sftp_file_path, local_path)
                 return open(local_path, 'rb')
 
     def get_files_matching_pattern(self, files, pattern):
