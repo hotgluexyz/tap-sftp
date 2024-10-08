@@ -68,7 +68,7 @@ class SFTPConnection():
                     self.transport.close()
                 LOGGER.info(f'Connection failed, sleeping for {5*i} secconds...')
                 time.sleep(5*i)
-                LOGGER.info('Retrying to stablish a connection...')
+                LOGGER.info("Retrying to establish a connection...")
                 if i >= (self.retries):
                     raise ex
 
