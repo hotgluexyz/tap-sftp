@@ -54,3 +54,6 @@ nosetests.xml
 coverage.xml
 *,cover
 .hypothesis/
+
+.python-version
+.venv/
