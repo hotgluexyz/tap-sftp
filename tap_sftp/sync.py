@@ -63,8 +63,13 @@ def sync_stream(config, state, stream):
 
     with ThreadPoolExecutor(max_workers=8) as executor:
         future_sftp = {executor.submit(sync_ftp, sftp_file, stream, table_spec, config, state, table_visible_name): sftp_file for sftp_file in files}
+
+        completed_count = 0
         for future in as_completed(future_sftp):
+            completed_count += 1
+            file_info = future_sftp[future]
             records_streamed += future.result()
+            LOGGER.info('Completed %d/%d files. Last: %s', completed_count, len(files), file_info['filepath'])
 
     LOGGER.info('Wrote %s records for table "%s".', records_streamed, table_visible_name)
 
@@ -78,7 +83,8 @@ def sync_stream(config, state, stream):
         jitter=backoff.random_jitter,
         factor=2)
 def sync_file(sftp_file_spec, stream, table_spec, config):
-    LOGGER.info('Syncing file "%s".', sftp_file_spec["filepath"])
+    thread_id = f"Thread-{threading.current_thread().ident}"
+    LOGGER.info('%s Starting file: %s', thread_id, sftp_file_spec["filepath"])
     sftp_client = client.connection(config)
     decryption_configs = config.get('decryption_configs')
     if decryption_configs:
@@ -99,7 +105,7 @@ def sync_file(sftp_file_spec, stream, table_spec, config):
         records_synced = 0
 
         for reader in readers:
-            LOGGER.info('Synced Record Count: 0')
+            LOGGER.info('%s Synced Record Count: 0', thread_id)
             with Transformer() as transformer:
                 for row in reader:
                     custom_columns = {
@@ -115,8 +121,8 @@ def sync_file(sftp_file_spec, stream, table_spec, config):
                     write_record(stream.stream, to_write)
                     records_synced += 1
                     if records_synced % 100000 == 0:
-                        LOGGER.info(f'Synced Record Count: {records_synced}')
-            LOGGER.info(f'Sync Complete - Records Synced: {records_synced}')
+                        LOGGER.info('%s Synced Record Count: %d', thread_id, records_synced)
+            LOGGER.info('%s Sync Complete - Records Synced: %d', thread_id, records_synced)
 
     stats.add_file_data(table_spec, sftp_file_spec['filepath'], sftp_file_spec['last_modified'], records_synced)
 
