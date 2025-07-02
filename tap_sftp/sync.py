@@ -7,14 +7,22 @@ from tap_sftp.singer_encodings import csv_handler
 
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import backoff
+import threading
 
 LOGGER = singer.get_logger()
+
+# Thread lock for synchronizing state writes
+_state_lock = threading.Lock()
 
 
 def sync_ftp(sftp_file, stream, table_spec, config, state, table_name):
     records_streamed = sync_file(sftp_file, stream, table_spec, config)
-    state = singer.write_bookmark(state, table_name, 'modified_since', sftp_file['last_modified'].isoformat())
-    singer.write_state(state)
+    
+    # Synchronize state updates to prevent race conditions
+    with _state_lock:
+        state = singer.write_bookmark(state, table_name, 'modified_since', sftp_file['last_modified'].isoformat())
+        singer.write_state(state)
+    
     return records_streamed
 
 
