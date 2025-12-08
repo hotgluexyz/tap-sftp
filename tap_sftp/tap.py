@@ -54,7 +54,7 @@ def do_sync(config, catalog, state):
             LOGGER.info("%s: Completed sync (%s rows)", stream_name, counter_value)
         except csv.Error as e:
             if "field larger than field limit" in str(e):
-                raise Exception(f"CSV file ({stream_name}) seems to be corrupted. Please check the file for unclosed quotes. {e}")
+                raise Exception(f"CSV file ({stream_name}) seems to be corrupted. Please check the file for unclosed quotes. Error:{e}")
             else:
                 raise e
 

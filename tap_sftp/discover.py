@@ -24,7 +24,7 @@ def discover_streams(config):
             schema = json_schema.get_schema_for_table(conn, table_spec, config)
         except csv.Error as e:
             if "field larger than field limit" in str(e):
-                raise Exception(f"CSV file ({original_name}) seems to be corrupted. Please check the file for unclosed quotes. {e}")
+                raise Exception(f"CSV file ({original_name}) seems to be corrupted. Please check the file for unclosed quotes. Error: {e}")
             else:
                 raise e
         stream_md = metadata.get_standard_metadata(schema,
