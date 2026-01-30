@@ -36,13 +36,14 @@ class FileHandleWithCleanup:
         return self.file_handle
     
     def __exit__(self, exc_type, exc_val, exc_tb):
-        # Close file handle first
-        if self.file_handle and not self.file_handle.closed:
-            self.file_handle.close()
-        
-        # Now cleanup temp directory
-        if self.temp_dir:
-            self.temp_dir.cleanup()
+        try:
+            # Close file handle first
+            if self.file_handle and not self.file_handle.closed:
+                self.file_handle.close()
+        finally:
+            # Always cleanup temp directory, even if close() fails
+            if self.temp_dir:
+                self.temp_dir.cleanup()
         
         return False  # Don't suppress exceptions
 
