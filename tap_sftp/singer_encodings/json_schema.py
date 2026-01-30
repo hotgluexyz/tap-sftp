@@ -33,38 +33,38 @@ def sample_file(conn, table_spec, f, sample_rate, max_records, config):
     decryption_configs = config.get('decryption_configs')
     if decryption_configs:
         decryption_configs['key'] = AWS_SSM.get_decryption_key(decryption_configs.get('SSM_key_name'))
-        file_handle, decrypted_name = conn.get_file_handle(f, decryption_configs)
-        f['filepath'] = decrypted_name
-    else:
-        file_handle = conn.get_file_handle(f)
 
-    # Add file_name to opts and flag infer_compression to support gzipped files
-    opts = {'key_properties': table_spec.get('key_properties', []),
-            'delimiter': table_spec.get('delimiter', ','),
-            'file_name': f['filepath'],
-            'encoding': table_spec.get('encoding', config.get('encoding'))}
+    with conn.get_file_handle(f, decryption_configs) as file_handle:
+        if decryption_configs:
+            f['filepath'] = file_handle.name
 
-    readers = csv_handler.get_row_iterators(file_handle, options=opts, infer_compression=True)
+        # Add file_name to opts and flag infer_compression to support gzipped files
+        opts = {'key_properties': table_spec.get('key_properties', []),
+                'delimiter': table_spec.get('delimiter', ','),
+                'file_name': f['filepath'],
+                'encoding': table_spec.get('encoding', config.get('encoding'))}
 
-    for reader in readers:
-        current_row = 0
-        for row in reader:
-            if (current_row % sample_rate) == 0:
-                if row.get(csv_handler.SDC_EXTRA_COLUMN):
-                    row.pop(csv_handler.SDC_EXTRA_COLUMN)
-                samples.append(row)
+        readers = csv_handler.get_row_iterators(file_handle, options=opts, infer_compression=True)
 
-            current_row += 1
+        for reader in readers:
+            current_row = 0
+            for row in reader:
+                if (current_row % sample_rate) == 0:
+                    if row.get(csv_handler.SDC_EXTRA_COLUMN):
+                        row.pop(csv_handler.SDC_EXTRA_COLUMN)
+                    samples.append(row)
 
-            if len(samples) >= max_records:
-                break
+                current_row += 1
 
-    # Empty sample to show field selection, if needed
-    empty_file = False
-    if len(samples) == 0:
-        empty_file = True
-        # Assumes all reader objects in readers have the same fieldnames
-        samples.append({name: None for name in reader.fieldnames})
+                if len(samples) >= max_records:
+                    break
+
+        # Empty sample to show field selection, if needed
+        empty_file = False
+        if len(samples) == 0:
+            empty_file = True
+            # Assumes all reader objects in readers have the same fieldnames
+            samples.append({name: None for name in reader.fieldnames})
 
     return (empty_file, samples)
 
