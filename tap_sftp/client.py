@@ -19,6 +19,35 @@ LOGGER = singer.get_logger()
 
 logging.getLogger("paramiko").setLevel(logging.CRITICAL)
 
+
+class FileHandleWithCleanup:
+    """
+    Context manager that keeps a file handle and its temp directory alive.
+    
+    This ensures the temp directory is not deleted until the file is fully processed.
+    Fixes the race condition where TemporaryDirectory() would delete files
+    before they were done being read.
+    """
+    def __init__(self, file_handle, temp_dir):
+        self.file_handle = file_handle
+        self.temp_dir = temp_dir  # Keep reference to prevent deletion
+    
+    def __enter__(self):
+        return self.file_handle
+    
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        try:
+            # Close file handle first
+            if self.file_handle and not self.file_handle.closed:
+                self.file_handle.close()
+        finally:
+            # Always cleanup temp directory, even if close() fails
+            if self.temp_dir:
+                self.temp_dir.cleanup()
+        
+        return False  # Don't suppress exceptions
+
+
 def handle_backoff(details):
     LOGGER.warn(
         "SSH Connection closed unexpectedly. Waiting {wait} seconds and retrying...".format(**details)
@@ -178,8 +207,18 @@ class SFTPConnection():
         return matching_files
 
     def get_file_handle(self, f, decryption_configs=None):
-        """ Takes a file dict {"filepath": "...", "last_modified": "..."} and returns a handle to the file. """
-        with tempfile.TemporaryDirectory() as tmpdirname:
+        """
+        Takes a file dict {"filepath": "...", "last_modified": "..."} and returns a context manager
+        that provides a handle to the file while keeping the temp directory alive.
+        
+        The temp directory will only be cleaned up when the context manager exits,
+        ensuring the file remains accessible during processing.
+        """
+        # Create temp directory but DON'T use 'with' - we need to keep it alive
+        temp_dir = tempfile.TemporaryDirectory()
+        tmpdirname = temp_dir.name
+
+        try:
             sftp_file_path = f["filepath"]
             local_path = f'{tmpdirname}/{os.path.basename(sftp_file_path)}'
             if decryption_configs:
@@ -193,14 +232,22 @@ class SFTPConnection():
                     decryption_configs.get('gnupghome'),
                     decryption_configs.get('passphrase')
                 )
-                LOGGER.info(f'Decrypting file complete')
+                LOGGER.info('Decrypting file complete')
                 try:
-                    return open(decrypted_path, 'rb')
+                    file_handle = open(decrypted_path, 'rb')
                 except FileNotFoundError:
                     raise Exception(f'Decryption of file failed: {sftp_file_path}')
             else:
                 self.sftp.get(sftp_file_path, local_path)
-                return open(local_path, 'rb')
+                file_handle = open(local_path, 'rb')
+            
+            # Return context manager that keeps temp_dir alive until processing completes
+            return FileHandleWithCleanup(file_handle, temp_dir)
+            
+        except Exception:
+            # If anything fails, cleanup and re-raise
+            temp_dir.cleanup()
+            raise
 
     def get_files_matching_pattern(self, files, pattern):
         """ Takes a file dict {"filepath": "...", "last_modified": "..."} and a regex pattern string, and returns
