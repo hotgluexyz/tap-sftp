@@ -36,7 +36,7 @@ def get_row_iterator(iterable, options=None):
         io.TextIOWrapper(iterable, encoding=(options.get("encoding") or detector.result.get('encoding'))),
         fieldnames=None,
         restkey=SDC_EXTRA_COLUMN,
-        delimiter=options.get('delimiter', ',')
+        delimiter=codecs.decode(options.get('delimiter', ','), 'unicode_escape')
     )
 
     headers = set(reader.fieldnames)
