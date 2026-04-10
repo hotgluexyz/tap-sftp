@@ -86,7 +86,7 @@ def sync_stream(config, state, stream):
 @backoff.on_exception(
         backoff.expo,
         (IOError,OSError),
-        max_tries=3,
+        max_tries=6,
         jitter=backoff.random_jitter,
         factor=2)
 def sync_file(sftp_file_spec, stream, table_spec, config):
