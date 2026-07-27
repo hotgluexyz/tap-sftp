@@ -34,6 +34,7 @@ $ pip install .
         "port": 22,
         "username": "YOUR_USER",
         "password": "YOUR_PASS",
+        "timeout": 300,
         "tables": [
             {
                 "table_name": "MyExportData",
