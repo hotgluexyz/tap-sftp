@@ -55,7 +55,7 @@ def handle_backoff(details):
 
 
 class SFTPConnection():
-    def __init__(self, host, username, password=None, private_key_file=None, private_key= None, port=None):
+    def __init__(self, host, username, password=None, private_key_file=None, private_key= None, port=None, timeout=None):
         self.host = host
         self.username = username
         self.password = password
@@ -64,6 +64,7 @@ class SFTPConnection():
         self.key = None
         self.transport = None
         self.retries = 10
+        self.timeout = float(timeout) if timeout not in (None, "") else 300
         self.__sftp = None
         self._setup_key(private_key_file, private_key, password)
 
@@ -104,6 +105,7 @@ class SFTPConnection():
                 self.transport.use_compression(True)
                 self.transport.connect(username=self.username, password=self.password, hostkey=None, pkey=self.key)
                 self.__sftp = paramiko.SFTPClient.from_transport(self.transport)
+                self.__sftp.get_channel().settimeout(self.timeout)
                 LOGGER.info('Connection successful')
                 break
             except (AuthenticationException, SSHException, ConnectionResetError) as ex:
@@ -263,4 +265,5 @@ def connection(config):
                           password=config.get('password'),
                           private_key_file=config.get('private_key_file'),
                           private_key=config.get('private_key'),
-                          port=config.get('port'))
+                          port=config.get('port'),
+                          timeout=config.get('timeout'))
